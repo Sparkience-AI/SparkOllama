@@ -74,7 +74,6 @@ def run() -> None:
         return
 
     messages.append(ChatMessage(role="user", content=prompt))
-    _save_messages(messages)
     _render_message(messages[-1])
 
     partial: list[str] = []
@@ -88,8 +87,15 @@ def run() -> None:
                     f"omitted {prepared.dropped_messages} older messages to bound local context."
                 )
             for chunk in stream:
-                partial.append(chunk)
+                remaining = service.response_character_limit - sum(len(part) for part in partial)
+                if remaining <= 0:
+                    st.warning("The response reached the session character limit and was stopped.")
+                    break
+                partial.append(chunk[:remaining])
                 output.markdown("".join(partial), unsafe_allow_html=False)
+                if len(chunk) > remaining:
+                    st.warning("The response reached the session character limit and was stopped.")
+                    break
         except SparkOllamaError as exc:
             if partial:
                 st.warning(f"{exc} The partial response remains in this session.")
@@ -98,4 +104,8 @@ def run() -> None:
 
     if partial:
         messages.append(ChatMessage(role="assistant", content="".join(partial)))
-        _save_messages(messages)
+        _save_messages(list(service.retain_session(messages)))
+
+
+if __name__ == "__main__":
+    run()

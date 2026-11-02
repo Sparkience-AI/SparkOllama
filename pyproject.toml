@@ -15,6 +15,9 @@ dependencies = [
   "streamlit>=1.37,<2",
 ]
 
+[project.scripts]
+sparkollama = "sparkollama.cli:main"
+
 [dependency-groups]
 dev = [
   "hatchling>=1.26,<2",

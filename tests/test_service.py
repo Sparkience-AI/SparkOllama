@@ -5,7 +5,6 @@ from collections.abc import Iterator, Sequence
 import pytest
 
 from sparkollama.models import ChatMessage, ModelInfo
-from sparkollama.providers import CancellationSignal
 from sparkollama.service import ChatService, ConversationPolicy, ConversationValidationError
 
 
@@ -20,14 +19,13 @@ class FakeProvider:
         self,
         model: str,
         messages: Sequence[ChatMessage],
-        cancellation: CancellationSignal | None = None,
     ) -> Iterator[str]:
         self.received = messages
         yield f"reply from {model}"
 
 
-def test_policy_keeps_a_bounded_suffix_without_splitting_messages() -> None:
-    policy = ConversationPolicy(max_messages=3, max_characters=8, max_prompt_characters=8)
+def test_policy_keeps_complete_turns_without_orphaning_assistant_messages() -> None:
+    policy = ConversationPolicy(max_messages=3, max_characters=20, max_prompt_characters=8)
     history = [
         ChatMessage("user", "one"),
         ChatMessage("assistant", "two"),
@@ -39,10 +37,26 @@ def test_policy_keeps_a_bounded_suffix_without_splitting_messages() -> None:
     result = policy.prepare(history)
 
     assert result.messages == (
+        ChatMessage("user", "three"),
         ChatMessage("assistant", "four"),
         ChatMessage("user", "five"),
     )
-    assert result.dropped_messages == 3
+    assert result.dropped_messages == 2
+
+
+def test_policy_bounds_complete_session_turns() -> None:
+    policy = ConversationPolicy(max_messages=2, max_characters=100)
+    history = [
+        ChatMessage("user", "old"),
+        ChatMessage("assistant", "answer"),
+        ChatMessage("user", "new"),
+        ChatMessage("assistant", "reply"),
+    ]
+
+    assert policy.retain_session(history) == (
+        ChatMessage("user", "new"),
+        ChatMessage("assistant", "reply"),
+    )
 
 
 @pytest.mark.parametrize(
@@ -67,7 +81,7 @@ def test_service_uses_prepared_history() -> None:
     provider = FakeProvider()
     service = ChatService(
         provider,
-        ConversationPolicy(max_messages=2, max_characters=100, max_prompt_characters=100),
+        ConversationPolicy(max_messages=3, max_characters=100, max_prompt_characters=100),
     )
     history = [
         ChatMessage("user", "old"),
@@ -79,7 +93,7 @@ def test_service_uses_prepared_history() -> None:
 
     assert list(stream) == ["reply from tiny"]
     assert provider.received == prepared.messages
-    assert prepared.dropped_messages == 1
+    assert prepared.dropped_messages == 0
 
 
 def test_service_requires_a_model() -> None:

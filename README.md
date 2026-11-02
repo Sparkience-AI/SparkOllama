@@ -43,10 +43,10 @@ ollama pull llama3.2
 Start the application:
 
 ```bash
-uv run --locked streamlit run app.py
+uv run --locked sparkollama
 ```
 
-Open <http://localhost:8501>. The original `file.py` launch command remains available as a compatibility entry point.
+Open <http://127.0.0.1:8501>. The launcher binds Streamlit to loopback and disables Streamlit usage reporting. The original `app.py` and `file.py` launch commands remain available as source-checkout compatibility entry points and use the committed secure Streamlit configuration.
 
 ## Local security posture
 
@@ -59,7 +59,7 @@ Conversation content is untrusted text. The application does not enable unsafe H
 - **Ollama is unavailable:** start the Ollama service and reload the page.
 - **No model is installed:** run `ollama pull llama3.2` or select another model you have installed.
 - **A stream is interrupted:** any received partial response remains visible and in the current session; the error does not expose prompt text.
-- **History is too large:** older complete messages are omitted from the provider context and the UI reports the count.
+- **History is too large:** older complete turns are removed from both session state and provider context; the UI reports provider-context omissions.
 - **The latest prompt is too large:** the application rejects it rather than silently truncating it.
 
 Review the [known limitations](docs/limitations.md) before relying on the application for sensitive or long-running work.
@@ -87,7 +87,7 @@ uv run --locked pytest -q
 uv build --no-sources
 ```
 
-The test suite covers endpoint policy, daemon failures, model response compatibility, streaming, cancellation, partial-stream recovery, context bounds, and safe UI rendering.
+The test suite covers endpoint policy, daemon failures, model response compatibility, streaming, partial-stream recovery, complete-turn context bounds, local server configuration, the installed launcher, and safe UI rendering. CI also builds and smoke-tests the wheel on Python 3.11, 3.12, and 3.13.
 
 ## Documentation and AI discoverability
 

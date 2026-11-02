@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from threading import Event
 from typing import Any
 
 import pytest
@@ -59,6 +58,8 @@ def test_loopback_endpoint_policy_accepts_local_hosts(endpoint: str) -> None:
         "https://ollama.example.com:11434",
         "http://localhost:11434/api/chat",
         "http://user:secret@localhost:11434",
+        "http://localhost:not-a-port",
+        "http://localhost:70000",
         "file:///tmp/ollama.sock",
     ],
 )
@@ -106,16 +107,6 @@ def test_stream_forwards_typed_messages_and_yields_content() -> None:
 
     assert result == ["hello"]
     assert client.received_messages == [{"role": "user", "content": "hi"}]
-
-
-def test_stream_stops_when_cancelled() -> None:
-    cancellation = Event()
-    cancellation.set()
-    provider = OllamaProvider(
-        client=FakeClient(chunks=[{"message": {"content": "must not appear"}}])
-    )
-
-    assert list(provider.stream_chat("tiny", [ChatMessage("user", "hi")], cancellation)) == []
 
 
 def test_stream_preserves_partial_output_then_translates_failure() -> None:

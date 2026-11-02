@@ -14,10 +14,6 @@ from sparkollama.models import ChatMessage, ModelInfo
 DEFAULT_OLLAMA_ENDPOINT = "http://127.0.0.1:11434"
 
 
-class CancellationSignal(Protocol):
-    def is_set(self) -> bool: ...
-
-
 class OllamaClient(Protocol):
     def list(self) -> Any: ...
 
@@ -37,7 +33,6 @@ class ChatProvider(Protocol):
         self,
         model: str,
         messages: Sequence[ChatMessage],
-        cancellation: CancellationSignal | None = None,
     ) -> Iterator[str]: ...
 
 
@@ -64,7 +59,11 @@ class OllamaGenerationError(SparkOllamaError):
 def validate_loopback_endpoint(endpoint: str) -> str:
     """Accept only an HTTP(S) Ollama endpoint on the local machine."""
 
-    parsed = urlsplit(endpoint)
+    try:
+        parsed = urlsplit(endpoint)
+        port = parsed.port
+    except ValueError as exc:
+        raise EndpointPolicyError("The Ollama endpoint contains an invalid host or port.") from exc
     if parsed.scheme not in {"http", "https"}:
         raise EndpointPolicyError("The Ollama endpoint must use HTTP or HTTPS.")
     if parsed.username or parsed.password or parsed.query or parsed.fragment:
@@ -73,8 +72,8 @@ def validate_loopback_endpoint(endpoint: str) -> str:
         raise EndpointPolicyError("The Ollama endpoint must not contain a path.")
     if parsed.hostname not in {"127.0.0.1", "::1", "localhost"}:
         raise EndpointPolicyError("SparkOllama supports loopback Ollama endpoints only.")
-    if parsed.port is None:
-        raise EndpointPolicyError("The Ollama endpoint must include an explicit port.")
+    if port is None or not 1 <= port <= 65_535:
+        raise EndpointPolicyError("The Ollama endpoint must include a port from 1 to 65535.")
     return endpoint.rstrip("/")
 
 
@@ -136,7 +135,6 @@ class OllamaProvider:
         self,
         model: str,
         messages: Sequence[ChatMessage],
-        cancellation: CancellationSignal | None = None,
     ) -> Iterator[str]:
         try:
             chunks = self._client.chat(
@@ -145,8 +143,6 @@ class OllamaProvider:
                 stream=True,
             )
             for chunk in chunks:
-                if cancellation is not None and cancellation.is_set():
-                    return
                 message = _value(chunk, "message")
                 content = _value(message, "content") if message is not None else None
                 if not isinstance(content, str):
