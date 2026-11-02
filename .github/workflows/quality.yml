@@ -1,0 +1,19 @@
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    uses: Sparkience-AI/.github/.github/workflows/reusable-python-quality.yml@adc5b60771b32fbf93f28304fbcf2dd5ad4a0464
+    with:
+      python-version: "3.12"
+      run-type-check: true
+
+  documentation:
+    uses: Sparkience-AI/.github/.github/workflows/reusable-docs-geo.yml@adc5b60771b32fbf93f28304fbcf2dd5ad4a0464
