@@ -1,103 +1,103 @@
-# SparkOllama 🤖
-## Your AI, Your Conversations; Powered by Streamlit and Ollama; Developed by Sparkience AI Lab
+# SparkOllama
 
-Welcome to **SparkOllama**! This application is a sleek, AI-powered conversational interface built using Ollama's advanced language models. If you're looking for an effortless way to interact with AI through real-time responses, SparkOllama is the tool for you!
+SparkOllama is an alpha, privacy-focused chat interface for models running on a local [Ollama](https://ollama.com/) service. It provides model discovery, bounded in-memory conversation history, and streamed responses without adding a cloud provider or hosted backend.
 
----
+## Who it is for
 
-### Features ✨
-- **Multiple AI Models**: Choose from a list of available Ollama models to tailor your conversation.
-- **Real-Time Streaming**: Get dynamic responses in real-time as you type, thanks to the Ollama API.
-- **Clear Chat History**: Reset your conversation history at any time.
-- **Stylish Dark Mode**: Enjoy a sleek, modern, and dark-themed interface for an immersive experience.
-  
----
+SparkOllama is for people who already use Ollama and want a small browser interface that keeps ordinary inference on their machine. It is not a public chat service, remote Ollama gateway, model manager, or autonomous agent.
 
-### How It Works ⚙️
+## Capabilities
 
-1. **Model Selection**:  
-   - Choose your AI model from a dropdown list. Ollama provides various models for different use cases.
-   
-2. **Chat with AI**:  
-   - Type your query into the chat box, and the AI will respond in real-time with intelligent, conversational answers.
-   
-3. **Clear Chat**:  
-   - Easily clear your chat history using the "Clear Chat History" button to start fresh at any time.
+- Lists models installed in the local Ollama service.
+- Streams local model responses into a Streamlit chat interface.
+- Keeps conversation content only in the current application session.
+- Bounds prompt and history size before sending context to Ollama.
+- Clears history when the user requests it or changes models.
+- Handles unavailable daemons, empty model lists, malformed responses, timeouts, and interrupted streams with user-facing states.
+- Renders user and model content without unsafe HTML interpolation.
 
----
+SparkOllama does not browse, execute code, access files, call tools, or send prompts to a cloud model.
 
-### Installation 🚀
+## Requirements
 
-1. **Clone the Repository**:
-    ```bash
-    git clone https://github.com/your-repo/sparkollama.git
-    cd sparkollama
-    ```
+- Windows, macOS, or Linux supported by Ollama and Python.
+- Python 3.11, 3.12, or 3.13.
+- [uv](https://docs.astral.sh/uv/) for the reproducible Python environment.
+- A locally installed [Ollama](https://ollama.com/download) service.
+- Enough disk and memory for the model you choose; requirements vary by model and quantization.
 
-2. **Install Dependencies**:
-    ```bash
-    pip install -r requirements.txt
-    ```
+## Local installation
 
-3. **Run the Application**:
-    ```bash
-    streamlit run file.py
-    ```
+```bash
+git clone https://github.com/Sparkience-AI/SparkOllama.git
+cd SparkOllama
+uv sync --locked
+```
 
-4. **Open the App**:  
-   - Visit `http://localhost:8501` in your browser to start interacting with SparkOllama!
+Pull a small model if you do not already have one:
 
----
+```bash
+ollama pull llama3.2
+```
 
-### Key Files 🗂️
+Start the application:
 
-- **`file.py`**:  
-  The main Streamlit app that handles user input, displays messages, and interacts with the Ollama API.
-  
-- **`style.css`**:  
-  Custom CSS to give the application a sleek, modern look with a dark theme.
+```bash
+uv run --locked streamlit run app.py
+```
 
----
+Open <http://localhost:8501>. The original `file.py` launch command remains available as a compatibility entry point.
 
-### User Interface 🖥️
+## Local security posture
 
-- **Wide Mode Layout**: Utilizes the full width of your screen for a more spacious experience.
-- **Interactive Chat Boxes**: Different color schemes for user and AI responses for clarity and ease of reading.
-- **Dark Theme**: Keep it sleek with a modern, dark-themed UI for comfortable use in low-light environments.
+SparkOllama connects only to an explicit loopback endpoint, `http://127.0.0.1:11434`, and rejects remote or ambiguous endpoints in its provider boundary. Ollama's local API does not provide application authentication by default. Do not bind port `11434` to `0.0.0.0`, a LAN interface, or the public internet merely to use this application.
 
----
+Conversation content is untrusted text. The application does not enable unsafe HTML when rendering messages, and models receive no tool authority. See [privacy and data handling](docs/privacy.md) and the [architecture and trust boundary](docs/architecture.md).
 
-### Behind the Scenes 🧠
+## Failure behavior
 
-- **Ollama API**: SparkOllama leverages the Ollama chat API to stream conversational responses in real-time, enhancing the interactivity of the tool.
-- **Streamlit**: Used to create a fast, responsive, and user-friendly web app interface.
+- **Ollama is unavailable:** start the Ollama service and reload the page.
+- **No model is installed:** run `ollama pull llama3.2` or select another model you have installed.
+- **A stream is interrupted:** any received partial response remains visible and in the current session; the error does not expose prompt text.
+- **History is too large:** older complete messages are omitted from the provider context and the UI reports the count.
+- **The latest prompt is too large:** the application rejects it rather than silently truncating it.
 
----
+Review the [known limitations](docs/limitations.md) before relying on the application for sensitive or long-running work.
 
-### Contribution Guidelines 🤝
+## Architecture
 
-We welcome contributions! If you'd like to contribute to SparkOllama, feel free to open an issue or submit a pull request.
+The Streamlit interface calls a framework-independent `ChatService`, which validates conversation context and uses an `OllamaProvider` adapter. Deterministic tests inject fake clients, so normal CI does not require a daemon, model download, network request, or API key.
 
----
+```text
+Streamlit UI -> ChatService -> loopback-only OllamaProvider -> local Ollama daemon
+                 |                         |
+          context policy             error translation
+```
 
-### Future Plans 🔮
+## Development
 
-- **Improved Customization**: More model options and fine-tuning capabilities.
-- **Saved Conversations**: Allow users to save and revisit past conversations.
-- **Enhanced Visuals**: Even more customization for the UI, with options for light mode and font changes.
+Run the same checks used by CI:
 
----
+```bash
+uv sync --locked --all-groups
+uv run --locked ruff format --check .
+uv run --locked ruff check .
+uv run --locked mypy src
+uv run --locked pytest -q
+uv build --no-sources
+```
 
-### License 📜
+The test suite covers endpoint policy, daemon failures, model response compatibility, streaming, cancellation, partial-stream recovery, context bounds, and safe UI rendering.
 
-This project is licensed under the MIT License. See the `LICENSE` file for details.
+## Documentation and AI discoverability
 
----
+- [Privacy and retention](docs/privacy.md)
+- [Architecture and trust boundary](docs/architecture.md)
+- [Known limitations](docs/limitations.md)
+- [`llms.txt`](llms.txt), provided as an experimental machine-readable project summary
 
-### Stay Connected 🌐
+The README and linked documents are the authoritative sources for installation, scope, privacy, and limitations. Generic claims about model intelligence are intentionally avoided because behavior depends on the selected local model.
 
-Made with ❤️ by **Sparkience AI Lab**. Feel free to reach out or follow us for updates!
+## License and support
 
-Happy chatting with SparkOllama! 👨‍💻👩‍💻
-
----
+SparkOllama is available under the [MIT License](LICENSE). Use GitHub issues for reproducible bugs and feature proposals. Report security concerns through the Sparkience organization security policy rather than a public issue.
