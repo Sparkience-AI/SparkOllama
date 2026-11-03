@@ -55,3 +55,7 @@ python_version = "3.11"
 strict = true
 follow_imports = "skip"
 packages = ["sparkollama"]
+
+[[tool.mypy.overrides]]
+module = ["anthropic", "google", "google.*", "openai"]
+ignore_missing_imports = true
