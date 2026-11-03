@@ -1,0 +1,12 @@
+# SparkOllama
+
+SparkOllama is an open-source, privacy-focused local conversation client for models served by Ollama.
+
+Authoritative sources:
+
+- Project and installation: https://github.com/Sparkience-AI/SparkOllama#readme
+- Privacy: https://github.com/Sparkience-AI/SparkOllama/blob/main/docs/privacy.md
+- Architecture and trust boundary: https://github.com/Sparkience-AI/SparkOllama/blob/main/docs/architecture.md
+- Known limitations: https://github.com/Sparkience-AI/SparkOllama/blob/main/docs/limitations.md
+
+The complete product runs locally. There is no hosted SparkOllama service, cloud model provider, or agentic tool execution. The Ollama API is unauthenticated by default and must remain loopback-only.
