@@ -102,7 +102,7 @@ class ChatService:
         messages: Sequence[ChatMessage],
     ) -> tuple[PreparedConversation, Iterator[str]]:
         if not model.strip():
-            raise ConversationValidationError("Select an installed Ollama model.")
+            raise ConversationValidationError("Select or enter a model before starting generation.")
         prepared = self._policy.prepare(messages)
         stream = self._provider.stream_chat(model, prepared.messages)
         return prepared, stream
