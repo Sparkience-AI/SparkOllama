@@ -2,10 +2,22 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import streamlit as st
 
 from sparkollama.models import ChatMessage
-from sparkollama.providers import OllamaProvider, SparkOllamaError
+from sparkollama.providers import (
+    DEFAULT_ANTHROPIC_MODEL,
+    DEFAULT_GEMINI_MODEL,
+    DEFAULT_OPENAI_MODEL,
+    AnthropicProvider,
+    ChatProvider,
+    GeminiProvider,
+    OllamaProvider,
+    OpenAIProvider,
+    SparkOllamaError,
+)
 from sparkollama.service import ChatService
 
 
@@ -23,43 +35,79 @@ def _render_message(message: ChatMessage) -> None:
         st.markdown(message.content, unsafe_allow_html=False)
 
 
+CLOUD_PROVIDERS = {
+    "Google Gemini": ("Google Gemini API key", DEFAULT_GEMINI_MODEL, GeminiProvider),
+    "OpenAI": ("OpenAI API key", DEFAULT_OPENAI_MODEL, OpenAIProvider),
+    "Anthropic Claude": ("Anthropic API key", DEFAULT_ANTHROPIC_MODEL, AnthropicProvider),
+}
+
+
+def _configure_provider() -> tuple[ChatProvider, str, str] | None:
+    provider_name = st.selectbox(
+        "Provider",
+        ["Local Ollama", *CLOUD_PROVIDERS],
+        help="Local Ollama is the default. Cloud providers require your own key and consent.",
+    )
+    if provider_name == "Local Ollama":
+        provider: ChatProvider = OllamaProvider()
+        try:
+            models = provider.list_models()
+        except SparkOllamaError as exc:
+            st.error(str(exc))
+            st.info(
+                "Start Ollama, then reload this page. The default endpoint is "
+                "http://127.0.0.1:11434."
+            )
+            return None
+        if not models:
+            st.warning("Ollama is running, but no local models are installed.")
+            st.code("ollama pull llama3.2", language="shell")
+            return None
+        names = [model.name for model in models]
+        selected = st.selectbox("Local model", names)
+        return provider, provider_name, selected
+
+    key_label, default_model, provider_type = CLOUD_PROVIDERS[provider_name]
+    api_key = st.text_input(key_label, type="password", key=f"key-{provider_name}")
+    model = st.text_input(
+        "Model ID",
+        value=default_model,
+        key=f"model-{provider_name}",
+        help="Use a model ID available to your provider account.",
+    ).strip()
+    consent = st.checkbox(
+        f"Send this session's messages to {provider_name}",
+        key=f"consent-{provider_name}",
+    )
+    if not api_key or not consent:
+        st.info("Enter a key and confirm cloud transmission to start this provider session.")
+        return None
+    try:
+        provider = cast(ChatProvider, provider_type(api_key, model))
+    except SparkOllamaError as exc:
+        st.error(str(exc))
+        return None
+    return provider, provider_name, model
+
+
 def run() -> None:
     st.set_page_config(page_title="SparkOllama", page_icon="🤖", layout="wide")
     st.title("SparkOllama")
-    st.caption("Private, session-only chat with models running on your local Ollama service.")
+    st.caption("Local Ollama by default, with explicit session-only BYOK cloud options.")
 
-    service = ChatService(OllamaProvider())
-    try:
-        models = service.available_models()
-    except SparkOllamaError as exc:
-        st.error(str(exc))
-        st.info(
-            "Start Ollama, then reload this page. The default endpoint is http://127.0.0.1:11434."
-        )
-        st.stop()
-
-    if not models:
-        st.warning("Ollama is running, but no local models are installed.")
-        st.code("ollama pull llama3.2", language="shell")
-        st.stop()
-
-    names = [model.name for model in models]
-    previous_model = st.session_state.get("sparkollama_selected_model")
-    if previous_model not in names:
-        previous_model = names[0]
-    selected_model = st.selectbox(
-        "Local model",
-        names,
-        index=names.index(previous_model),
-        help="Changing models clears the current conversation to avoid mixing model contexts.",
-    )
+    configured = _configure_provider()
+    if configured is None:
+        return
+    provider, provider_name, selected_model = configured
+    service = ChatService(provider)
 
     messages = _messages()
-    if st.session_state.get("sparkollama_selected_model") not in {None, selected_model}:
+    selection = f"{provider_name}:{selected_model}"
+    if st.session_state.get("sparkollama_selection") not in {None, selection}:
         messages = []
         _save_messages(messages)
         st.info("The conversation was cleared because the selected model changed.")
-    st.session_state.sparkollama_selected_model = selected_model
+    st.session_state.sparkollama_selection = selection
 
     if st.button("Clear current chat", disabled=not messages):
         messages = []
@@ -69,7 +117,7 @@ def run() -> None:
     for message in messages:
         _render_message(message)
 
-    prompt = st.chat_input("Message your local model", max_chars=8_000)
+    prompt = st.chat_input(f"Message {provider_name}", max_chars=8_000)
     if not prompt:
         return
 

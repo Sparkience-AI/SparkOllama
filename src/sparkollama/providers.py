@@ -1,4 +1,4 @@
-"""Provider boundary for the loopback Ollama service."""
+"""Provider boundaries for local Ollama and explicit BYOK cloud sessions."""
 
 from __future__ import annotations
 
@@ -12,6 +12,9 @@ import ollama
 from sparkollama.models import ChatMessage, ModelInfo
 
 DEFAULT_OLLAMA_ENDPOINT = "http://127.0.0.1:11434"
+DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
+DEFAULT_OPENAI_MODEL = "gpt-6-luna"
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5"
 
 
 class OllamaClient(Protocol):
@@ -53,6 +56,14 @@ class OllamaProtocolError(SparkOllamaError):
 
 
 class OllamaGenerationError(SparkOllamaError):
+    pass
+
+
+class ProviderConfigurationError(SparkOllamaError):
+    pass
+
+
+class CloudGenerationError(SparkOllamaError):
     pass
 
 
@@ -155,3 +166,147 @@ class OllamaProvider:
             raise OllamaGenerationError(
                 "Local generation stopped before a complete response was received."
             ) from exc
+
+
+class StaticModelProvider:
+    """Shared model-list behavior for one explicitly configured cloud model."""
+
+    provider_name = "Cloud provider"
+
+    def __init__(self, model: str) -> None:
+        normalized = model.strip()
+        if not normalized:
+            raise ProviderConfigurationError("Enter a model ID before starting a cloud session.")
+        self.model = normalized
+
+    def list_models(self) -> list[ModelInfo]:
+        return [ModelInfo(self.model)]
+
+    def _translate_failure(self, exc: Exception) -> CloudGenerationError:
+        return CloudGenerationError(
+            f"{self.provider_name} generation stopped before a complete response was received."
+        )
+
+
+class GeminiProvider(StaticModelProvider):
+    provider_name = "Google Gemini"
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = DEFAULT_GEMINI_MODEL,
+        *,
+        client: Any | None = None,
+    ) -> None:
+        super().__init__(model)
+        if not api_key.strip():
+            raise ProviderConfigurationError("Enter a Google Gemini API key.")
+        if client is None:
+            try:
+                from google import genai
+            except ImportError as exc:
+                raise ProviderConfigurationError(
+                    "Install cloud providers with `uv sync --extra cloud`."
+                ) from exc
+            client = genai.Client(api_key=api_key)
+        self._client = client
+
+    def stream_chat(self, model: str, messages: Sequence[ChatMessage]) -> Iterator[str]:
+        try:
+            contents = [
+                {
+                    "role": "model" if message.role == "assistant" else "user",
+                    "parts": [{"text": message.content}],
+                }
+                for message in messages
+            ]
+            for chunk in self._client.models.generate_content_stream(
+                model=model,
+                contents=contents,
+            ):
+                text = getattr(chunk, "text", None)
+                if isinstance(text, str) and text:
+                    yield text
+        except SparkOllamaError:
+            raise
+        except Exception as exc:
+            raise self._translate_failure(exc) from exc
+
+
+class OpenAIProvider(StaticModelProvider):
+    provider_name = "OpenAI"
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = DEFAULT_OPENAI_MODEL,
+        *,
+        client: Any | None = None,
+    ) -> None:
+        super().__init__(model)
+        if not api_key.strip():
+            raise ProviderConfigurationError("Enter an OpenAI API key.")
+        if client is None:
+            try:
+                from openai import OpenAI
+            except ImportError as exc:
+                raise ProviderConfigurationError(
+                    "Install cloud providers with `uv sync --extra cloud`."
+                ) from exc
+            client = OpenAI(api_key=api_key)
+        self._client = client
+
+    def stream_chat(self, model: str, messages: Sequence[ChatMessage]) -> Iterator[str]:
+        try:
+            stream = self._client.responses.create(
+                model=model,
+                input=[message.as_provider_message() for message in messages],
+                stream=True,
+                store=False,
+            )
+            for event in stream:
+                if getattr(event, "type", None) == "response.output_text.delta":
+                    delta = getattr(event, "delta", None)
+                    if isinstance(delta, str) and delta:
+                        yield delta
+        except SparkOllamaError:
+            raise
+        except Exception as exc:
+            raise self._translate_failure(exc) from exc
+
+
+class AnthropicProvider(StaticModelProvider):
+    provider_name = "Anthropic Claude"
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = DEFAULT_ANTHROPIC_MODEL,
+        *,
+        client: Any | None = None,
+    ) -> None:
+        super().__init__(model)
+        if not api_key.strip():
+            raise ProviderConfigurationError("Enter an Anthropic API key.")
+        if client is None:
+            try:
+                from anthropic import Anthropic
+            except ImportError as exc:
+                raise ProviderConfigurationError(
+                    "Install cloud providers with `uv sync --extra cloud`."
+                ) from exc
+            client = Anthropic(api_key=api_key)
+        self._client = client
+
+    def stream_chat(self, model: str, messages: Sequence[ChatMessage]) -> Iterator[str]:
+        try:
+            with self._client.messages.stream(
+                model=model,
+                max_tokens=4_096,
+                messages=[message.as_provider_message() for message in messages],
+            ) as stream:
+                yield from stream.text_stream
+        except SparkOllamaError:
+            raise
+        except Exception as exc:
+            raise self._translate_failure(exc) from exc
