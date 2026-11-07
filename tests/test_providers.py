@@ -7,11 +7,15 @@ import pytest
 
 from sparkollama.models import ChatMessage
 from sparkollama.providers import (
+    AnthropicProvider,
     EndpointPolicyError,
+    GeminiProvider,
     OllamaGenerationError,
     OllamaProtocolError,
     OllamaProvider,
     OllamaUnavailableError,
+    OpenAIProvider,
+    ProviderConfigurationError,
     validate_loopback_endpoint,
 )
 
@@ -130,3 +134,99 @@ def test_stream_rejects_malformed_chunks() -> None:
 
     with pytest.raises(OllamaProtocolError):
         next(stream)
+
+
+def test_gemini_stream_uses_direct_key_client_and_conversation_roles() -> None:
+    class Models:
+        def generate_content_stream(self, **kwargs: Any) -> Iterable[Any]:
+            assert kwargs == {
+                "model": "gemini-test",
+                "contents": [
+                    {"role": "user", "parts": [{"text": "hi"}]},
+                    {"role": "model", "parts": [{"text": "hello"}]},
+                    {"role": "user", "parts": [{"text": "again"}]},
+                ],
+            }
+            return [type("Chunk", (), {"text": "answer"})()]
+
+    client = type("GeminiClient", (), {"models": Models()})()
+    provider = GeminiProvider("session-key", "gemini-test", client=client)
+
+    result = list(
+        provider.stream_chat(
+            "gemini-test",
+            [
+                ChatMessage("user", "hi"),
+                ChatMessage("assistant", "hello"),
+                ChatMessage("user", "again"),
+            ],
+        )
+    )
+
+    assert result == ["answer"]
+
+
+def test_openai_stream_uses_responses_api_without_storage() -> None:
+    calls: list[dict[str, Any]] = []
+
+    class Responses:
+        def create(self, **kwargs: Any) -> Iterable[Any]:
+            calls.append(kwargs)
+            return [
+                type(
+                    "Event",
+                    (),
+                    {"type": "response.output_text.delta", "delta": "answer"},
+                )()
+            ]
+
+    client = type("OpenAIClient", (), {"responses": Responses()})()
+    provider = OpenAIProvider("session-key", "gpt-test", client=client)
+
+    result = list(provider.stream_chat("gpt-test", [ChatMessage("user", "hi")]))
+
+    assert result == ["answer"]
+    assert calls == [
+        {
+            "model": "gpt-test",
+            "input": [{"role": "user", "content": "hi"}],
+            "stream": True,
+            "store": False,
+        }
+    ]
+
+
+def test_anthropic_stream_uses_messages_api() -> None:
+    calls: list[dict[str, Any]] = []
+
+    class Stream:
+        text_stream = ["answer"]
+
+        def __enter__(self) -> Stream:
+            return self
+
+        def __exit__(self, *args: Any) -> None:
+            return None
+
+    class Messages:
+        def stream(self, **kwargs: Any) -> Stream:
+            calls.append(kwargs)
+            return Stream()
+
+    client = type("AnthropicClient", (), {"messages": Messages()})()
+    provider = AnthropicProvider("session-key", "claude-test", client=client)
+
+    assert list(provider.stream_chat("claude-test", [ChatMessage("user", "hi")])) == ["answer"]
+    assert calls == [
+        {
+            "model": "claude-test",
+            "max_tokens": 4_096,
+            "messages": [{"role": "user", "content": "hi"}],
+        }
+    ]
+
+
+@pytest.mark.parametrize("provider", [GeminiProvider, OpenAIProvider, AnthropicProvider])
+def test_cloud_providers_reject_blank_session_keys(provider: Any) -> None:
+    with pytest.raises(ProviderConfigurationError, match="key"):
+        provider(" ", client=object())
