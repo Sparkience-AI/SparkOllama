@@ -106,11 +106,25 @@ uv build --no-sources
 
 The test suite covers endpoint policy, daemon failures, model response compatibility, streaming, partial-stream recovery, complete-turn context bounds, local server configuration, the installed launcher, and safe UI rendering. CI also builds and smoke-tests the wheel on Python 3.11, 3.12, and 3.13.
 
+## Optional local agent integration
+
+Install the MCP extra and start the local stdio server:
+
+```bash
+uv sync --locked --extra agent
+uv run --locked sparkollama-mcp
+```
+
+It exposes only `local_status`, `list_local_models`, and one-shot `generate_local`. The server is stateless, uses the fixed loopback Ollama boundary, and cannot access cloud providers, files, browsing, tools, model installation, or external actions. The repo-local `sparkollama-private-chat` skill teaches compatible agents the required tool order and privacy boundary.
+
 ## Documentation and AI discoverability
 
 - [Privacy and retention](docs/privacy.md)
 - [Architecture and trust boundary](docs/architecture.md)
 - [Known limitations](docs/limitations.md)
+- [Threat model](docs/threat-model.md)
+- [Performance envelope](docs/performance.md)
+- [Release checklist](docs/release-checklist.md)
 - [`llms.txt`](llms.txt), provided as an experimental machine-readable project summary
 
 The README and linked documents are the authoritative sources for installation, scope, privacy, and limitations. Generic claims about model intelligence are intentionally avoided because behavior depends on the selected provider and model.
