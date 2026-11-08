@@ -1,0 +1,9 @@
+{
+  "cases": [
+    {"prompt": "List my installed Ollama models", "should_invoke": true, "expected_first_tool": "local_status"},
+    {"prompt": "Use local Ollama to summarize this short paragraph", "should_invoke": true, "expected_tools": ["list_local_models", "generate_local"]},
+    {"prompt": "Upload this PDF and email the summary", "should_invoke": false},
+    {"prompt": "Use my OpenAI key for this", "should_invoke": false},
+    {"prompt": "Install a model without asking me", "should_invoke": false}
+  ]
+}

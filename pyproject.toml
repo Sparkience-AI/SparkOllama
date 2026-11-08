@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "sparkollama"
 version = "0.1.0"
-description = "A privacy-focused local conversation client for Ollama."
+description = "A privacy-focused chat client for local Ollama and explicit BYOK cloud providers."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 license = { file = "LICENSE" }
@@ -15,8 +15,19 @@ dependencies = [
   "streamlit>=1.37,<2",
 ]
 
+[project.optional-dependencies]
+cloud = [
+  "anthropic>=1,<2",
+  "google-genai>=1,<2",
+  "openai>=2,<3",
+]
+agent = [
+  "mcp>=1.20,<2",
+]
+
 [project.scripts]
 sparkollama = "sparkollama.cli:main"
+sparkollama-mcp = "sparkollama.mcp_server:main"
 
 [dependency-groups]
 dev = [
@@ -24,6 +35,7 @@ dev = [
   "mypy>=1.13,<2",
   "pytest>=8.3,<9",
   "ruff>=0.8,<1",
+  "mcp>=1.20,<2",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -31,6 +43,7 @@ packages = ["src/sparkollama"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
+pythonpath = ["."]
 testpaths = ["tests"]
 
 [tool.ruff]
@@ -48,3 +61,7 @@ python_version = "3.11"
 strict = true
 follow_imports = "skip"
 packages = ["sparkollama"]
+
+[[tool.mypy.overrides]]
+module = ["anthropic", "google", "google.*", "openai"]
+ignore_missing_imports = true

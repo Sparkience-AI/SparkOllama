@@ -1,0 +1,10 @@
+interface:
+  display_name: "SparkOllama Private Chat"
+  short_description: "Run bounded private prompts on local Ollama"
+  default_prompt: "Use $sparkollama-private-chat to list my local models and run a private prompt."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "sparkollama"
+      description: "Local SparkOllama stdio MCP server"
+      transport: "stdio"
