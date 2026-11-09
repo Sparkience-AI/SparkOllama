@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from typing import cast
 
 import streamlit as st
@@ -18,7 +19,8 @@ from sparkollama.providers import (
     OpenAIProvider,
     SparkOllamaError,
 )
-from sparkollama.service import ChatService
+from sparkollama.service import ChatService, managed_stream
+from sparkollama.session import credential_fingerprint
 
 
 def _messages() -> list[ChatMessage]:
@@ -42,7 +44,15 @@ CLOUD_PROVIDERS = {
 }
 
 
-def _configure_provider() -> tuple[ChatProvider, str, str] | None:
+def _credential_salt() -> bytes:
+    salt = st.session_state.get("sparkollama_credential_salt")
+    if not isinstance(salt, bytes) or len(salt) < 16:
+        salt = secrets.token_bytes(32)
+        st.session_state.sparkollama_credential_salt = salt
+    return salt
+
+
+def _configure_provider() -> tuple[ChatProvider, str, str, str] | None:
     provider_name = st.selectbox(
         "Provider",
         ["Local Ollama", *CLOUD_PROVIDERS],
@@ -65,7 +75,7 @@ def _configure_provider() -> tuple[ChatProvider, str, str] | None:
             return None
         names = [model.name for model in models]
         selected = st.selectbox("Local model", names)
-        return provider, provider_name, selected
+        return provider, provider_name, selected, f"{provider_name}:{selected}"
 
     key_label, default_model, provider_type = CLOUD_PROVIDERS[provider_name]
     api_key = st.text_input(key_label, type="password", key=f"key-{provider_name}")
@@ -87,7 +97,8 @@ def _configure_provider() -> tuple[ChatProvider, str, str] | None:
     except SparkOllamaError as exc:
         st.error(str(exc))
         return None
-    return provider, provider_name, model
+    key_identity = credential_fingerprint(api_key, _credential_salt())
+    return provider, provider_name, model, f"{provider_name}:{model}:{key_identity}"
 
 
 def run() -> None:
@@ -98,16 +109,17 @@ def run() -> None:
     configured = _configure_provider()
     if configured is None:
         return
-    provider, provider_name, selected_model = configured
+    provider, provider_name, selected_model, session_identity = configured
     service = ChatService(provider)
 
     messages = _messages()
-    selection = f"{provider_name}:{selected_model}"
-    if st.session_state.get("sparkollama_selection") not in {None, selection}:
+    if st.session_state.get("sparkollama_selection") not in {None, session_identity}:
         messages = []
         _save_messages(messages)
-        st.info("The conversation was cleared because the selected model changed.")
-    st.session_state.sparkollama_selection = selection
+        st.info(
+            "The conversation was cleared because the provider, model, or cloud account changed."
+        )
+    st.session_state.sparkollama_selection = session_identity
 
     if st.button("Clear current chat", disabled=not messages):
         messages = []
@@ -134,16 +146,23 @@ def run() -> None:
                     f"Used the newest {len(prepared.messages)} messages; "
                     f"omitted {prepared.dropped_messages} older messages to bound local context."
                 )
-            for chunk in stream:
-                remaining = service.response_character_limit - sum(len(part) for part in partial)
-                if remaining <= 0:
-                    st.warning("The response reached the session character limit and was stopped.")
-                    break
-                partial.append(chunk[:remaining])
-                output.markdown("".join(partial), unsafe_allow_html=False)
-                if len(chunk) > remaining:
-                    st.warning("The response reached the session character limit and was stopped.")
-                    break
+            with managed_stream(stream):
+                for chunk in stream:
+                    remaining = service.response_character_limit - sum(
+                        len(part) for part in partial
+                    )
+                    if remaining <= 0:
+                        st.warning(
+                            "The response reached the session character limit and was stopped."
+                        )
+                        break
+                    partial.append(chunk[:remaining])
+                    output.markdown("".join(partial), unsafe_allow_html=False)
+                    if len(chunk) > remaining:
+                        st.warning(
+                            "The response reached the session character limit and was stopped."
+                        )
+                        break
         except SparkOllamaError as exc:
             if partial:
                 st.warning(f"{exc} The partial response remains in this session.")

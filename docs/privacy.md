@@ -8,6 +8,9 @@ explicit session-only BYOK cloud routes.
 - Gemini, OpenAI, and Anthropic require an API key and separate cloud-transmission confirmation.
 - Cloud keys remain in the active Streamlit process session and are not persisted or copied into
   process-global environment variables by SparkOllama.
+- Replacing a cloud key clears conversation history before another request. The comparison uses a
+  per-session salted HMAC identity; plaintext keys are not copied into history, logs, or selection
+  metadata, and the identity is not persisted.
 - SparkOllama disables Streamlit usage reporting and has no application telemetry, user accounts,
   Sparkience-hosted provider, or analytics integration. A selected cloud provider applies its own
   API data-handling and retention terms.

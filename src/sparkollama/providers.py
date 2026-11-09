@@ -98,6 +98,12 @@ def _value(item: Any, *names: str) -> Any:
     return None
 
 
+def _close_if_supported(stream: object) -> None:
+    close = getattr(stream, "close", None)
+    if callable(close):
+        close()
+
+
 class OllamaProvider:
     """Translate the Ollama Python client into the application provider contract."""
 
@@ -153,13 +159,18 @@ class OllamaProvider:
                 messages=[message.as_provider_message() for message in messages],
                 stream=True,
             )
-            for chunk in chunks:
-                message = _value(chunk, "message")
-                content = _value(message, "content") if message is not None else None
-                if not isinstance(content, str):
-                    raise OllamaProtocolError("Ollama returned an unexpected streaming response.")
-                if content:
-                    yield content
+            try:
+                for chunk in chunks:
+                    message = _value(chunk, "message")
+                    content = _value(message, "content") if message is not None else None
+                    if not isinstance(content, str):
+                        raise OllamaProtocolError(
+                            "Ollama returned an unexpected streaming response."
+                        )
+                    if content:
+                        yield content
+            finally:
+                _close_if_supported(chunks)
         except SparkOllamaError:
             raise
         except Exception as exc:
@@ -220,13 +231,17 @@ class GeminiProvider(StaticModelProvider):
                 }
                 for message in messages
             ]
-            for chunk in self._client.models.generate_content_stream(
+            chunks = self._client.models.generate_content_stream(
                 model=model,
                 contents=contents,
-            ):
-                text = getattr(chunk, "text", None)
-                if isinstance(text, str) and text:
-                    yield text
+            )
+            try:
+                for chunk in chunks:
+                    text = getattr(chunk, "text", None)
+                    if isinstance(text, str) and text:
+                        yield text
+            finally:
+                _close_if_supported(chunks)
         except SparkOllamaError:
             raise
         except Exception as exc:
@@ -264,11 +279,14 @@ class OpenAIProvider(StaticModelProvider):
                 stream=True,
                 store=False,
             )
-            for event in stream:
-                if getattr(event, "type", None) == "response.output_text.delta":
-                    delta = getattr(event, "delta", None)
-                    if isinstance(delta, str) and delta:
-                        yield delta
+            try:
+                for event in stream:
+                    if getattr(event, "type", None) == "response.output_text.delta":
+                        delta = getattr(event, "delta", None)
+                        if isinstance(delta, str) and delta:
+                            yield delta
+            finally:
+                _close_if_supported(stream)
         except SparkOllamaError:
             raise
         except Exception as exc:
