@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from typing import Any
 
 import pytest
@@ -194,6 +194,37 @@ def test_openai_stream_uses_responses_api_without_storage() -> None:
             "store": False,
         }
     ]
+
+
+def test_openai_stream_closes_the_sdk_iterator_when_consumption_stops() -> None:
+    class Events(Iterator[Any]):
+        def __init__(self) -> None:
+            self.closed = False
+
+        def __next__(self) -> Any:
+            return type(
+                "Event",
+                (),
+                {"type": "response.output_text.delta", "delta": "partial"},
+            )()
+
+        def close(self) -> None:
+            self.closed = True
+
+    events = Events()
+
+    class Responses:
+        def create(self, **kwargs: Any) -> Events:
+            return events
+
+    client = type("OpenAIClient", (), {"responses": Responses()})()
+    stream = OpenAIProvider("session-key", "gpt-test", client=client).stream_chat(
+        "gpt-test", [ChatMessage("user", "hi")]
+    )
+
+    assert next(stream) == "partial"
+    stream.close()
+    assert events.closed is True
 
 
 def test_anthropic_stream_uses_messages_api() -> None:

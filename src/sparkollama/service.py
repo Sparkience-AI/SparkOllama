@@ -2,11 +2,24 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Generator, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from sparkollama.models import ChatMessage, ModelInfo
 from sparkollama.providers import ChatProvider, SparkOllamaError
+
+
+@contextmanager
+def managed_stream(stream: Iterator[str]) -> Generator[Iterator[str], None, None]:
+    """Close a provider iterator when consumption finishes or stops early."""
+
+    try:
+        yield stream
+    finally:
+        close = getattr(stream, "close", None)
+        if callable(close):
+            close()
 
 
 class ConversationValidationError(SparkOllamaError):

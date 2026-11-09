@@ -14,7 +14,7 @@ SparkOllama is for people who already use Ollama and want a small browser interf
 - Allows an account-supported cloud model ID to be entered instead of hard-coding one permanent model.
 - Keeps conversation content only in the current application session.
 - Bounds prompt and history size before sending context to the selected provider.
-- Clears history when the user requests it or changes models.
+- Clears history when the user requests it or changes providers, models, or cloud credentials.
 - Handles unavailable daemons, empty model lists, malformed responses, timeouts, and interrupted streams with user-facing states.
 - Renders user and model content without unsafe HTML interpolation.
 
@@ -45,6 +45,10 @@ uv sync --locked --extra cloud
 
 Cloud keys are entered in the app and retained only in Streamlit process memory for the session;
 they are not written to configuration files or copied into environment variables.
+
+SparkOllama derives a salted, non-reversible credential identity in memory so replacing a cloud key
+cannot silently reuse conversation history from another provider account. Neither the key nor this
+session-scoped identity is logged or persisted.
 
 Pull a small model if you do not already have one:
 
